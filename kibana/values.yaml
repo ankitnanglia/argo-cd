@@ -1,0 +1,2 @@
+oldSpaceSizeInMb: "512"
+elasticsearchUrl: http://elasticsearch-logs:9200

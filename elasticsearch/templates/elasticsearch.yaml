@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esconfig
+data:
+  custom-entrypoint.sh: |
+    #!/bin/bash
+    set -e
+    ulimit -n 1048576
+    exec /usr/local/bin/docker-entrypoint.sh "${@}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-logs-headless
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: elasticsearch-logs
+  ports:
+  - name: transport
+    port: 9300
+    protocol: TCP
+  - name: client
+    port: 9200
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch-logs
+spec:
+  serviceName: "elasticsearch-logs-headless"
+  replicas: {{ .Values.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: elasticsearch-logs
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-logs
+    spec:
+      terminationGracePeriodSeconds: 30
+      initContainers:
+      - name: init-sysctl
+        image: busybox:1.27.2
+        command:
+        - sysctl
+        - -w
+        - vm.max_map_count=262144
+        securityContext:
+          privileged: true
+      - name: volume-mount-hack
+        image: busybox:1.27.2
+        command: ["sh", "-c", "chmod -R 777 /usr/share/elasticsearch"]
+        volumeMounts:
+        - name: elasticsearch-logs-data
+          mountPath: /usr/share/elasticsearch/data
+      containers:
+      - name: elasticsearch-logs
+        image: docker.elastic.co/elasticsearch/elasticsearch:6.6.0
+        env:
+        - name: "node.name"
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: "cluster.name"
+          value: "elasticsearch-logs-cluster"
+        - name: "discovery.zen.ping.unicast.hosts"
+          value: "elasticsearch-logs-headless"
+        - name: "xpack.security.enabled"
+          value: "false"
+        - name: "xpack.monitoring.enabled"
+          value: "false"
+        - name: "xpack.ml.enabled"
+          value: "false"
+        - name: "xpack.watcher.enabled"
+          value: "false"
+        - name: ES_JAVA_OPTS
+          value: "{{ .Values.heapOpts }}"
+        securityContext:
+          privileged: true
+        ports:
+        - containerPort: 9200
+        - containerPort: 9300
+        readinessProbe:
+          httpGet:
+            path: /_cluster/health?local=true
+            port: 9200
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: /_cluster/health?local=true
+            port: 9200
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 5
+        volumeMounts:
+        - name: elasticsearch-logs-data
+          mountPath: /usr/share/elasticsearch/data
+        - name: esconfig
+          mountPath: /esconfig
+      volumes:
+      - name: esconfig
+        configMap:
+          name: esconfig
+  volumeClaimTemplates:
+  - metadata:
+      name: elasticsearch-logs-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: {{ .Values.volumeSize }}Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-logs
+spec:
+  type: ClusterIP
+  selector:
+    app: elasticsearch-logs
+  ports:
+  - name: transport
+    port: 9300
+    protocol: TCP
+  - name: client
+    port: 9200

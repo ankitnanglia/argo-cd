@@ -1,0 +1,50 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana-logs
+  labels:
+    app: kibana-logs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana-logs
+  template:
+    metadata:
+      labels:
+        app: kibana-logs
+    spec:
+      containers:
+      - image: docker.elastic.co/kibana/kibana:6.6.0
+        name: kibana-logs
+        env:
+        - name: ELASTICSEARCH_URL
+          value: {{ .Values.elasticsearchUrl }}
+        - name: xpack.monitoring.ui.container.elasticsearch.enabled
+          value: "false"
+        - name: NODE_OPTIONS
+          value: "--max_old_space_size={{ .Values.oldSpaceSizeInMb }}"
+        ports:
+        - name: web
+          containerPort: 5601
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana-logs-nlb
+  labels:
+    app: kibana-logs
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+spec:
+  externalTrafficPolicy: Local
+  loadBalancerSourceRanges:
+    - {{ .Values.REMOTE_ACCESS_CIDR }}
+  ports:
+    - name: web
+      port: 5601
+      targetPort: 5601
+  selector:
+    app: kibana-logs
+  type: LoadBalancer
