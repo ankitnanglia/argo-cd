@@ -1,2 +1,2 @@
-heapOpts: "-Xms2048m -Xmx2048m"
+heapOpts: "-Xms1024m -Xmx1024m"
 volumeSize: 1
