@@ -1,2 +1,2 @@
-oldSpaceSizeInMb: "512"
+oldSpaceSizeInMb: "1024"
 elasticsearchUrl: http://elasticsearch-logs:9200
